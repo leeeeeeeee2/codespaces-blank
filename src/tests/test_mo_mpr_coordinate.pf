@@ -1,0 +1,82 @@
+
+module test_mo_mpr_coordinate
+   use funit
+   use mo_kind, only: dp, i4
+   use mo_mpr_coordinate, only: Coordinate
+   use mo_mpr_constants, only : defaultAlias, defaultCoordCount
+   use mo_constants, only : nodata_dp, nodata_i4
+
+  implicit none
+
+  private
+
+  public :: test_init, test_descending_coordinate_values
+
+contains
+
+   @test
+   subroutine test_init()
+      character(10), parameter :: coord_name = 'test_coord'
+      integer(i4), parameter :: coord_id = 1_i4
+      character(6), parameter :: coord_stagger = 'center'
+      real(dp), allocatable, dimension(:) :: coord_values
+      type(Coordinate) :: coord
+
+      allocate(coord_values(0))
+
+      coord = Coordinate(&
+              name=coord_name, &
+              id=1_i4, &
+              stagger=coord_stagger, &
+              fileName=defaultAlias, &
+              values=coord_values, &
+              bound=nodata_dp, &
+              start=nodata_dp, &
+              step=nodata_dp, &
+              count_=defaultCoordCount &
+      )
+
+      @assertTrue(trim(coord%name) == coord_name)
+      @assertEqual(coord_id, coord%id)
+      @assertTrue(trim(coord%staggerName) == coord_stagger)
+      @assertEqual(1_i4, coord%staggerId)
+      @assertEqual([nodata_dp,nodata_dp], coord%bounds)
+      @assertEqual(nodata_dp, coord%step)
+      @assertEqual(defaultCoordCount, coord%count)
+      @assertTrue(trim(coord%projString) == defaultAlias)
+
+   end subroutine test_init
+
+   @test
+   subroutine test_descending_coordinate_values()
+      character(10), parameter :: coord_name = 'test_coord'
+      integer(i4), parameter :: coord_id = 1_i4
+      character(6), parameter :: coord_stagger = 'end'
+      real(dp), parameter :: bound = 6.0_dp
+      real(dp), dimension(6) :: coord_values = [5.0_dp, 4.0_dp, 3.0_dp, 2.0_dp, 1.0_dp, 0.0_dp]
+      type(Coordinate) :: coord
+
+      real(dp), dimension(size(coord_values)+1) :: tempCoordValues
+
+      coord = Coordinate(&
+              name=coord_name, &
+              id=1_i4, &
+              stagger=coord_stagger, &
+              fileName=defaultAlias, &
+              values=coord_values, &
+              bound=bound &
+      )
+
+      tempCoordValues(1) = bound
+      tempCoordValues(2:size(coord_values)+1) = coord_values
+      @assertEqual([bound,coord_values(size(coord_values))], coord%bounds)
+      @assertEqual(tempCoordValues, coord%values)
+      @assertEqual(-1.0_dp, coord%step)
+
+   end subroutine test_descending_coordinate_values
+
+
+end module test_mo_mpr_coordinate
+
+
+

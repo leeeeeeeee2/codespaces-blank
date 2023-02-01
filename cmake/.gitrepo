@@ -1,0 +1,12 @@
+; DO NOT EDIT (unless you know what you are doing)
+;
+; This subdirectory is a git "subrepo", and this file is maintained by the
+; git-subrepo command. See https://github.com/git-commands/git-subrepo#readme
+;
+[subrepo]
+	remote = https://git.ufz.de/chs/cmake-fortran-scripts.git
+	branch = v1.7
+	commit = b4ffa3641b3d1ab733d98500dc2364a91eda15e5
+	parent = d6c8399072fab30450faf23957e9a3e629e84315
+	method = merge
+	cmdver = 0.4.3

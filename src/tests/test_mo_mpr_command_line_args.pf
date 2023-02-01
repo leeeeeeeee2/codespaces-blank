@@ -1,0 +1,63 @@
+!> \file test_mo_mpr_command_line_args.pf
+!> \brief test the parsing of command line args
+!> \details test the parsing of command line args
+!> \authors Robert Schweppe
+!> \date Apr 2020
+
+module test_mo_mpr_command_line_args
+
+  use funit
+  use mo_kind, only: i4
+  use mo_mpr_command_line_args, only: check_mpr_command_line_args
+  use mo_mpr_constants, only: maxNameLength, maxStringLength
+
+  implicit none
+
+  private
+
+  ! assume them to be fixed for now, which is the use case
+  character(len=maxNameLength), public, parameter :: arg1In = 'mpr.nml'
+  character(len=maxNameLength), public, parameter :: arg2In = 'mpr_global_parameter.nml'
+
+  public :: test_check_mpr_command_line_args
+
+contains
+  !> Check the command-line arguments to set the correct namelist paths
+  @test
+  subroutine test_check_mpr_command_line_args()
+    character(maxStringLength), dimension(18) :: arg1Outs = [character(maxStringLength) :: &
+            "bar", trim(arg1In), "bar", "bar", trim(arg1In), &
+            "bar", trim(arg1In), "bar", "bar",  &
+            "bar", trim(arg1In), "bar", "bar",  &
+            "bar", trim(arg1In), "bar", trim(arg1In), trim(arg1In) &
+    ]
+    character(maxStringLength), dimension(18) :: arg2Outs = [character(maxStringLength) :: &
+            "foo", "foo", trim(arg2In), "foo", trim(arg2In), &
+            "foo", "foo", trim(arg2In), "foo",  &
+            "foo", "foo", trim(arg2In), "foo",  &
+            "foo", "foo", trim(arg2In), trim(arg2In), trim(arg2In) &
+    ]
+    character(maxStringLength), dimension(18) :: commands = [character(maxStringLength) :: &
+            ! short arg flag names
+            "-p foo -c bar", "-p foo", "-c bar", "-cc -p foo -c bar", "", &
+            ! full config name
+            "-p foo --config_file bar", "-p foo", "--config_file bar", "-cc -p foo --config_file bar", &
+            ! full parameter name
+            "--parameter_file foo -c bar", "--parameter_file foo", "-c bar", "-cc --parameter_file foo -c bar", &
+            ! string values
+            "-p 'foo' -c 'bar'", "-p 'foo'", "-c 'bar'" , "-c'bar'" , "-cc" &
+    ]
+    integer(i4) :: i
+    character(maxNameLength) :: currentArg1In, currentArg2In
+
+    do i=1, size(commands)
+      currentArg1In = arg1In
+      currentArg2In = arg2In
+      call check_mpr_command_line_args(currentArg1In, currentArg2In, commands(i))
+      @assertTrue(trim(currentArg1In) == trim(arg1Outs(i)))
+      @assertTrue(trim(currentArg2In) == trim(arg2Outs(i)))
+    end do
+
+  end subroutine test_check_mpr_command_line_args
+
+end module test_mo_mpr_command_line_args

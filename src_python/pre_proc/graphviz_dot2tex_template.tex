@@ -1,0 +1,47 @@
+\documentclass[border=20mm]{standalone}
+\usepackage[x11names, rgb]{xcolor}
+% for outlines of coordinate labels
+\usepackage[outline]{contour}
+\usepackage[sfdefault]{noto}
+\contourlength{2bp}
+% for \centerarc command arg parsing
+\usepackage{ifthen}
+\usepackage[<<textencoding>>]{inputenc}
+\usepackage{tikz}
+\usetikzlibrary{arrows,shapes,calc,decorations.markings,backgrounds,fit}
+\usepackage{amsmath}
+<<startpreprocsection>>%
+\usepackage[active,auctex]{preview}
+<<endpreprocsection>>%
+<<gvcols>>%
+<<cropcode>>%
+<<docpreamble>>%
+
+\begin{document}
+\pagestyle{empty}
+%
+<<startpreprocsection>>%
+<<preproccode>>
+<<endpreprocsection>>%
+%
+<<startoutputsection>>
+% Start of code
+\begin{tikzpicture}[>=latex',join=bevel,<<graphstyle>>]
+\pgfsetlinewidth{1bp}
+<<figpreamble>>%
+<<drawcommands>>
+<<figpostamble>>%
+\end{tikzpicture}
+% End of code
+<<endoutputsection>>
+%
+\end{document}
+%
+<<startfigonlysection>>
+\begin{tikzpicture}[>=latex,join=bevel,<<graphstyle>>]
+\pgfsetlinewidth{1bp}
+<<figpreamble>>%
+<<drawcommands>>
+<<figpostamble>>%
+\end{tikzpicture}
+<<endfigonlysection>>

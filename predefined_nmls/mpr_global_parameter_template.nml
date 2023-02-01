@@ -1,0 +1,7 @@
+&Parameters
+parameter_names(1) = "Param1"
+parameter_values(1) = 0.1
+parameter_names(2) = "Param2"
+parameter_values(2) = 100.0
+/
+/

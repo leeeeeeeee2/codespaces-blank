@@ -1,0 +1,71 @@
+
+module test_mo_mpr_data_array
+   use funit
+   use mo_kind, only: dp, i4
+   use mo_mpr_data_array, only: TransferHelper, DataArray, add_data_array
+   use mo_mpr_constants, only: maxStringLength, maxNameLength, defaultAlias
+   use mo_mpr_parameters, only: mpr_add_parameters
+
+  implicit none
+
+  private
+
+  public :: test_func_str_to_funcName
+
+contains
+
+   @test
+   subroutine test_func_str_to_funcName()
+      integer(i4), parameter :: nTests = 2_i4
+      character(maxNameLength), dimension(nTests), parameter :: tf_helper_name = [character(maxNameLength) :: &
+              'test_tf01', 'test_tf02']
+      character(maxStringLength), dimension(nTests), parameter :: transferFuncName = [character(maxNameLength) :: &
+              'where (d1 > pa1 .and. d1 < pa2) pa5 else where (d1 < pa3) pa6 else where (d1 < pa4) pa7', &
+              'where((z.lower_bound + (z.upper_bound - z.lower_bound) / pa4) <= pa1) pa3 else pa2']
+      character(maxStringLength), dimension(nTests), parameter :: refTransferFuncName = [character(maxNameLength) :: &
+              'wh_bs_x1_gt_p1_ad_x1_lt_p2_be_p3_el_wh_bs_x1_lt_p4_be_p5_el_wh_bs_x1_lt_p6_be_p7', &
+              'wh_bs_bs_x3_pl_bs_x2_mi_x3_be_di_p1_be_le_p2_be_p3_el_p4']
+      character(maxNameLength), dimension(3_i4, nTests), parameter :: fromDataArrays = reshape([character(maxNameLength) :: &
+              "d1", defaultAlias, defaultAlias, "d2", "z.upper_bound", "z.lower_bound"], [3_i4, nTests])
+      integer(i4), dimension(nTests), parameter :: nFromDataArrays = [1_i4, 3_i4]
+      ! all parameters for all tests go here, please reuse
+      character(maxNameLength), dimension(7), parameter :: parameterNames = [character(maxNameLength) :: &
+              "pa1", "pa2", "pa3", "pa4", "pa5", "pa6", "pa7"]
+      real(dp), dimension(7), parameter :: parameterValues = [&
+              0.0_dp, 0.0_dp, 0.0_dp, 0.0_dp, 0.0_dp, 0.0_dp, 0.0_dp]
+      ! iterators and counters
+      integer(i4) :: iDa
+      integer(i4) :: iTest, iFromDataArrays
+      ! the types needed for testing
+      type(TransferHelper) :: tf_helper
+      type(DataArray) :: dataarray_
+
+      ! add the parameters
+      call mpr_add_parameters(parameterNames, parameterValues)
+      iDa = 1_i4
+      do iTest=1, nTests
+         ! add the necessary DataArrays
+         do iFromDataArrays=1, nFromDataArrays(iTest)
+            dataarray_ = DataArray(trim(fromDataArrays(iFromDataArrays, iTest)), iDa, fromFile='dummy.nc')
+            ! ... and add it to global vector
+            call add_data_array(dataarray_, iDa)
+            iDa = iDa + 1_i4
+         end do
+
+         tf_helper = TransferHelper(&
+                 name=tf_helper_name(iTest), &
+                 id=iTest, &
+                 fromDataArraysArg=fromDataArrays(1: nFromDataArrays(iTest), iTest), &
+                 transferFuncName=transferFuncName(iTest) &
+         )
+
+         @assertTrue(trim(tf_helper%transferFuncName) == trim(refTransferFuncName(iTest)))
+
+      end do
+
+   end subroutine test_func_str_to_funcName
+
+end module test_mo_mpr_data_array
+
+
+

@@ -1,0 +1,727 @@
+#include "flogging.h"
+module test_mo_mpr_data_array_upscale
+   use funit
+   use mo_kind, only: dp, i4, i8
+   use mo_mpr_data_array_upscale, only: get_target_ids, CoordUpscaler, MPR_COORD_UPSCALERS, get_coordUpscaler, &
+           compute_index_helpers, permutate, UpscaleHelper, MPR_UPSCALERS, add_upscaler
+   use mo_mpr_constants, only : maxNameLength
+   use mo_constants, only : nodata_dp
+   use mo_mpr_utils, only : get_index_in_vector
+   use mo_mpr_coordinate, only : Coordinate, add_coordinate, MPR_COORDINATES, CoordinatePointer, newCoordinate, &
+           create_upscaler_name
+   use mo_mpr_reset, only: reset
+   use mo_mpr_util_types, only: MPR_COORD_ALIAS, CoordAlias
+   use flogging
+
+contains
+
+  @test
+  subroutine test_get_target_ids()
+    @assertEqual([2_i8,2_i8,2_i8], get_target_ids([1_i8,2_i8,4_i8], 8_i8))
+    @assertEqual([1_i8,1_i8,1_i8], get_target_ids([1_i8,2_i8,4_i8], 1_i8))
+    @assertEqual([1_i8,1_i8,2_i8], get_target_ids([1_i8,2_i8,4_i8], 5_i8))
+    @assertEqual([1_i8], get_target_ids([1_i8], 1_i8))
+    @assertEqual([3_i8], get_target_ids([1_i8], 3_i8))
+
+  end subroutine test_get_target_ids
+
+  @test
+  subroutine test_permutate()
+    integer(i8) :: j
+    @assertEqual([0_i8,1_i8,0_i8,1_i8,0_i8,1_i8,0_i8,1_i8], permutate([(j, j=1_i4, 8_i8)], 1_i8, 2_i8))
+    @assertEqual([0_i8,1_i8,2_i8,3_i8,0_i8,1_i8,2_i8,3_i8], permutate([(j, j=1_i4, 8_i8)], 1_i8, 4_i8))
+    @assertEqual([0_i8,1_i8,2_i8,3_i8,4_i8,5_i8,6_i8,7_i8], permutate([(j, j=1_i4, 8_i8)], 1_i8, 8_i8))
+    @assertEqual([0_i8,0_i8,1_i8,1_i8,2_i8,2_i8,3_i8,3_i8], permutate([(j, j=1_i4, 8_i8)], 2_i8, 4_i8))
+    @assertEqual([1_i8,0_i8,1_i8,0_i8,1_i8,0_i8,1_i8,0_i8], permutate([(j, j=8_i8, 1_i4, -1_i4)], 1_i8, 2_i8))
+    @assertEqual([3_i8,2_i8,1_i8,0_i8,3_i8,2_i8,1_i8,0_i8], permutate([(j, j=8_i8, 1_i4, -1_i4)], 1_i8, 4_i8))
+    @assertEqual([7_i8,6_i8,5_i8,4_i8,3_i8,2_i8,1_i8,0_i8], permutate([(j, j=8_i8, 1_i4, -1_i4)], 1_i8, 8_i8))
+    @assertEqual([3_i8,3_i8,2_i8,2_i8,1_i8,1_i8,0_i8,0_i8], permutate([(j, j=8_i8, 1_i4, -1_i4)], 2_i8, 4_i8))
+
+  end subroutine test_permutate
+
+  @test
+  subroutine test_get_coordUpscaler()
+    integer(i4), dimension(6) :: ids
+    type(Coordinate) :: coord
+    type(CoordinatePointer), dimension(3) :: sourceCoords, targetCoords
+    real(dp) :: oneSixth, oneTwelfth
+    type(CoordUpscaler), pointer :: upscaler
+    integer(i4) :: upscalerId
+    real(dp), dimension(8,4) :: referenceWeights
+    integer(i8), dimension(8,4) :: referenceIds
+
+     ! init all the coordinates
+    ids(1) = get_index_in_vector('x_in', MPR_COORDINATES)
+    coord = newCoordinate('x_in', ids(1), "start", values=[0.0_dp, 1.0_dp, 2.0_dp, 3.0_dp], bound=4.0_dp)
+    call add_coordinate(coord, ids(1))
+    sourceCoords(1)%coord_p => MPR_COORDINATES(ids(1))
+    ids(2) = get_index_in_vector('y_in', MPR_COORDINATES)
+    coord = newCoordinate('y_in', ids(2), "start", values=[0.0_dp, 1.0_dp, 2.0_dp], bound=3.0_dp)
+    call add_coordinate(coord, ids(2))
+    sourceCoords(2)%coord_p => MPR_COORDINATES(ids(2))
+    ids(3) = get_index_in_vector('z_in', MPR_COORDINATES)
+    coord = newCoordinate('z_in', ids(3), "start", values=[0.0_dp, 1.0_dp], bound=2.0_dp)
+    call add_coordinate(coord, ids(3))
+    sourceCoords(3)%coord_p => MPR_COORDINATES(ids(3))
+    ids(4) = get_index_in_vector('x_out', MPR_COORDINATES)
+    coord = newCoordinate('x_out', ids(4), "start", values=[0.0_dp, 2.0_dp], bound=4.0_dp)
+    call add_coordinate(coord, ids(4))
+    targetCoords(1)%coord_p => MPR_COORDINATES(ids(4))
+    ids(5) = get_index_in_vector('y_out', MPR_COORDINATES)
+    coord = newCoordinate('y_out', ids(5), "start", values=[0.0_dp, 1.5_dp], bound=3.0_dp)
+    call add_coordinate(coord, ids(5))
+    targetCoords(2)%coord_p => MPR_COORDINATES(ids(5))
+    ids(6) = get_index_in_vector('z_out', MPR_COORDINATES)
+    coord = newCoordinate('z_out', ids(6), "start", values=[0.0_dp], bound=2.0_dp)
+    call add_coordinate(coord, ids(6))
+    targetCoords(3)%coord_p => MPR_COORDINATES(ids(6))
+
+    ! init the Upscaler
+    call get_coordUpscaler(sourceCoords, targetCoords, upscalerId)
+    upscaler => MPR_COORD_UPSCALERS(upscalerId)
+    oneSixth = 1.0_dp/6.0_dp
+    oneTwelfth = 1.0_dp/12.0_dp
+
+    @assertEqual([8_i8, 8_i8, 8_i8, 8_i8], upscaler%get_subcells())
+
+    referenceIds(:,1) = [1_i8, 2_i8, 5_i8, 6_i8, 13_i8, 14_i8, 17_i8, 18_i8]
+    referenceIds(:,2) = [3_i8, 4_i8, 7_i8, 8_i8, 15_i8, 16_i8, 19_i8, 20_i8]
+    referenceIds(:,3) = [5_i8, 6_i8, 9_i8, 10_i8, 17_i8, 18_i8, 21_i8, 22_i8]
+    referenceIds(:,4) = [7_i8, 8_i8, 11_i8, 12_i8, 19_i8, 20_i8, 23_i8, 24_i8]
+    @assertEqual(referenceIds, upscaler%get_ids())
+
+    referenceWeights(:,1) = [oneSixth, oneSixth, oneTwelfth, oneTwelfth, &
+           oneSixth, oneSixth, oneTwelfth, oneTwelfth]
+    referenceWeights(:,2) = [oneSixth, oneSixth, oneTwelfth, oneTwelfth, &
+           oneSixth, oneSixth, oneTwelfth, oneTwelfth]
+    referenceWeights(:,3) = [oneTwelfth, oneTwelfth, oneSixth, oneSixth, &
+           oneTwelfth, oneTwelfth, oneSixth, oneSixth]
+    referenceWeights(:,4) = [oneTwelfth, oneTwelfth, oneSixth, oneSixth, &
+           oneTwelfth, oneTwelfth, oneSixth, oneSixth]
+    @assertEqual(referenceWeights, upscaler%get_weights())
+
+    ! clean up
+    call reset()
+
+  end subroutine test_get_coordUpscaler
+
+  @test
+  subroutine test_compute_index_helpers()
+     integer(i8), dimension(3) :: currentCoords
+     integer(i8), dimension(3) :: newCoords
+     integer(i4) :: indexCoordCurrent
+     integer(i4) :: indexCoordNew
+     integer(i8), dimension(:), allocatable :: subcellIds, idAddon, subcellIdsRef, idAddonRef
+     integer(i8) :: idMultiplier, idMultiplierRef
+
+     currentCoords = [4_i8, 3_i8, 2_i8]
+
+     ! only upscale x coordinate
+     newCoords = [2_i8, 3_i8, 2_i8]
+     indexCoordCurrent = 3_i4
+     indexCoordNew = 3_i4
+     subcellIdsRef = [1_i8, 1_i8, 1_i8, 1_i8, 1_i8, 1_i8, 2_i8, 2_i8, 2_i8, 2_i8, 2_i8, 2_i8]
+     idAddonRef = [0_i8, 1_i8, 2_i8, 3_i8, 4_i8, 5_i8, 0_i8, 1_i8, 2_i8, 3_i8, 4_i8, 5_i8]
+     idMultiplierRef = 6_i8
+     allocate(subcellIds(12), idAddon(12))
+     call compute_index_helpers(currentCoords, newCoords, indexCoordCurrent, indexCoordNew, &
+          idAddon, subcellIds, idMultiplier)
+     @assertEqual(subcellIdsRef, subcellIds)
+     @assertEqual(idAddonRef, idAddon)
+     @assertEqual(idMultiplierRef, idMultiplier)
+     deallocate(subcellIds, idAddon)
+
+     ! only upscale y coordinate
+     newCoords = [4_i8, 3_i8, 2_i8]
+     indexCoordCurrent = 2_i4
+     indexCoordNew = 2_i4
+     subcellIdsRef = [1_i8, 1_i8, 2_i8, 2_i8, 3_i8, 3_i8, 1_i8, 1_i8, 2_i8, 2_i8, 3_i8, 3_i8, &
+                      1_i8, 1_i8, 2_i8, 2_i8, 3_i8, 3_i8, 1_i8, 1_i8, 2_i8, 2_i8, 3_i8, 3_i8]
+     idAddonRef = [0_i8, 1_i8, 0_i8, 1_i8, 0_i8, 1_i8, 6_i8, 7_i8, 6_i8, 7_i8, 6_i8, 7_i8, &
+                   12_i8, 13_i8, 12_i8, 13_i8, 12_i8, 13_i8, 18_i8, 19_i8, 18_i8, 19_i8, 18_i8, 19_i8]
+     idMultiplierRef = 2_i8
+     allocate(subcellIds(24), idAddon(24))
+     call compute_index_helpers(currentCoords, newCoords, indexCoordCurrent, indexCoordNew, &
+           idAddon, subcellIds, idMultiplier)
+     @assertEqual(subcellIdsRef, subcellIds)
+     @assertEqual(idAddonRef, idAddon)
+     @assertEqual(idMultiplierRef, idMultiplier)
+     deallocate(subcellIds, idAddon)
+
+     ! only upscale z coordinate
+     newCoords = [4_i8, 3_i8, 1_i8]
+     indexCoordCurrent = 1_i4
+     indexCoordNew = 1_i4
+     subcellIdsRef = [1_i8, 1_i8, 1_i8, 1_i8, 1_i8, 1_i8, 1_i8, 1_i8, 1_i8, 1_i8, 1_i8, 1_i8]
+     idAddonRef = [0_i8, 2_i8, 4_i8, 6_i8, 8_i8, 10_i8, 12_i8, 14_i8, 16_i8, 18_i8, 20_i8, 22_i8]
+     idMultiplierRef = 1_i8
+     allocate(subcellIds(12), idAddon(12))
+     call compute_index_helpers(currentCoords, newCoords, indexCoordCurrent, indexCoordNew, &
+           idAddon, subcellIds, idMultiplier)
+     @assertEqual(subcellIdsRef, subcellIds)
+     @assertEqual(idAddonRef, idAddon)
+     @assertEqual(idMultiplierRef, idMultiplier)
+     deallocate(subcellIds, idAddon)
+
+     ! upscale x and y coordinate
+     newCoords = [2_i8, 2_i8, 2_i8]
+     indexCoordCurrent = 2_i4
+     indexCoordNew = 3_i4
+     subcellIdsRef = [1_i8, 1_i8, 2_i8, 2_i8, 3_i8, 3_i8, 4_i8, 4_i8]
+     idAddonRef = [0_i8, 1_i8, 0_i8, 1_i8, 0_i8, 1_i8, 0_i8, 1_i8]
+     idMultiplierRef = 2_i8
+     allocate(subcellIds(8), idAddon(8))
+     call compute_index_helpers(currentCoords, newCoords, indexCoordCurrent, indexCoordNew, &
+           idAddon, subcellIds, idMultiplier)
+     @assertEqual(subcellIdsRef, subcellIds)
+     @assertEqual(idAddonRef, idAddon)
+     @assertEqual(idMultiplierRef, idMultiplier)
+     deallocate(subcellIds, idAddon)
+
+     ! upscale y and z coordinate
+     newCoords = [4_i8, 2_i8, 1_i8]
+     indexCoordCurrent = 1_i4
+     indexCoordNew = 2_i4
+     subcellIdsRef = [1_i8, 2_i8, 1_i8, 2_i8, 1_i8, 2_i8, 1_i8, 2_i8]
+     idAddonRef = [0_i8, 0_i8, 6_i8, 6_i8, 12_i8, 12_i8, 18_i8, 18_i8]
+     idMultiplierRef = 1_i8
+     allocate(subcellIds(8), idAddon(8))
+     call compute_index_helpers(currentCoords, newCoords, indexCoordCurrent, indexCoordNew, &
+           idAddon, subcellIds, idMultiplier)
+
+     @assertEqual(subcellIdsRef, subcellIds)
+     @assertEqual(idAddonRef, idAddon)
+     @assertEqual(idMultiplierRef, idMultiplier)
+     deallocate(subcellIds, idAddon)
+
+     ! upscale all coordinates
+     newCoords = [2_i8, 2_i8, 1_i8]
+     indexCoordCurrent = 1_i4
+     indexCoordNew = 3_i4
+     subcellIdsRef = [1_i8, 2_i8, 3_i8, 4_i8]
+     idAddonRef = [0_i8, 0_i8, 0_i8, 0_i8]
+     idMultiplierRef = 1_i8
+     allocate(subcellIds(4), idAddon(4))
+     call compute_index_helpers(currentCoords, newCoords, indexCoordCurrent, indexCoordNew, &
+           idAddon, subcellIds, idMultiplier)
+     @assertEqual(subcellIdsRef, subcellIds)
+     @assertEqual(idAddonRef, idAddon)
+     @assertEqual(idMultiplierRef, idMultiplier)
+     deallocate(subcellIds, idAddon)
+
+  end subroutine test_compute_index_helpers
+
+  @test
+  subroutine test_compute_weights_1d()
+
+    integer(i4) :: currentId, i, upscalerId
+    type(Coordinate) :: coord
+    type(CoordinatePointer), dimension(1) :: sourceCoords, targetCoords
+    real(dp) :: oneThird, twoThirds, oneSixth
+    type(CoordUpscaler), pointer :: upscaler
+    integer(i8) :: currentMaxSubcells, currentSubcells
+    integer, parameter :: nTests = 9
+    integer, parameter :: nTarget = 6
+    integer, parameter :: maxSubcells = 4
+    integer(i8), parameter :: defaultId = 0_i8
+    real(dp), parameter :: defaultWeight = 0_dp
+    integer(i4), dimension(2, nTests) :: pairs
+    integer(i8), dimension(nTarget, nTests) :: referenceSubcells
+    real(dp), dimension(maxSubcells, nTarget, nTests) :: referenceWeights
+    integer(i8), dimension(maxSubcells, nTarget, nTests) :: referenceIds
+
+    ! init all the coordinates
+    ! # 1
+    currentId = 1_i4
+    coord = newCoordinate('0_2_4_6', currentId, "start", values=[0.0_dp, 2.0_dp, 4.0_dp], bound=6.0_dp)
+    call add_coordinate(coord, currentId)
+    ! # 2
+    currentId = currentId + 1_i4
+    coord = newCoordinate('0_1_2_3_4_5_6', currentId, "start", values=[0.0_dp, 1.0_dp, 2.0_dp, 3.0_dp, 4.0_dp, 5.0_dp], bound=6.0_dp)
+    call add_coordinate(coord, currentId)
+    ! # 3
+    currentId = currentId + 1_i4
+    coord = newCoordinate('1_3_5', currentId, "start", values=[1.0_dp, 3.0_dp], bound=5.0_dp)
+    call add_coordinate(coord, currentId)
+    ! # 4
+    currentId = currentId + 1_i4
+    coord = newCoordinate('6_5_4_3_2_1_0', currentId, "start", values=[6.0_dp, 5.0_dp, 4.0_dp, 3.0_dp, 2.0_dp, 1.0_dp], bound=0.0_dp)
+    call add_coordinate(coord, currentId)
+    ! # 5
+    currentId = currentId + 1_i4
+    coord = newCoordinate('6_5.25_3.75_3.5_3_0', currentId, "start", values=[6.0_dp, 5.25_dp, 3.75_dp, 3.5_dp, 3.0_dp], bound=0.0_dp)
+    call add_coordinate(coord, currentId)
+    ! # 6
+    currentId = currentId + 1_i4
+    coord = newCoordinate('2_3_5.5_6', currentId, "start", values=[2.0_dp, 3.0_dp, 5.5_dp], bound=6.0_dp)
+    call add_coordinate(coord, currentId)
+    ! # 7
+    currentId = currentId + 1_i4
+    coord = newCoordinate('4_3.5_3_2.5', currentId, "start", values=[4.0_dp, 3.5_dp, 3.0_dp], bound=2.5_dp)
+    call add_coordinate(coord, currentId)
+
+    pairs(:, :) = reshape([&
+      1_i4, 2_i4, &  ! 1
+      2_i4, 1_i4, &  ! 2
+      1_i4, 3_i4, &  ! 3
+      1_i4, 7_i4, &  ! 4
+      2_i4, 4_i4, &  ! 5
+      2_i4, 5_i4, &  ! 6
+      2_i4, 6_i4, &  ! 7
+      4_i4, 1_i4, &  ! 8
+      5_i4, 1_i4  &  ! 9
+    ], shape(pairs), order=[1, 2])
+
+    referenceSubcells(:, :) = reshape([&
+      1_i8, 1_i8, 1_i8, 1_i8, 1_i8, 1_i8, &  ! 1
+      2_i8, 2_i8, 2_i8, defaultId, defaultId, defaultId, &  ! 2
+      2_i8, 2_i8, defaultId, defaultId, defaultId, defaultId, &  ! 3
+      1_i8, 1_i8, 1_i8, defaultId, defaultId, defaultId, &  ! 4
+      1_i8, 1_i8, 1_i8, 1_i8, 1_i8, 1_i8, &  ! 5
+      1_i8, 3_i8, 1_i8, 1_i8, 3_i8, defaultId, &  ! 6
+      1_i8, 3_i8, 1_i8, defaultId, defaultId, defaultId, &  ! 7
+      2_i8, 2_i8, 2_i8, defaultId, defaultId, defaultId, &  ! 8
+      1_i8, 4_i8, 2_i8, defaultId, defaultId, defaultId &  ! 9
+    ], shape(referenceSubcells), order=[1, 2])
+
+    referenceIds(:, :, :) = reshape([&
+       1_i8, defaultId, defaultId, defaultId, &  ! #1
+       1_i8, defaultId, defaultId, defaultId, &
+       2_i8, defaultId, defaultId, defaultId, &
+       2_i8, defaultId, defaultId, defaultId, &
+       3_i8, defaultId, defaultId, defaultId, &
+       3_i8, defaultId, defaultId, defaultId, &
+       1_i8, 2_i8, defaultId, defaultId, &  ! #2
+       3_i8, 4_i8, defaultId, defaultId, &
+       5_i8, 6_i8, defaultId, defaultId, &
+       defaultId, defaultId, defaultId, defaultId, &
+       defaultId, defaultId, defaultId, defaultId, &
+       defaultId, defaultId, defaultId, defaultId, &
+       1_i8, 2_i8, defaultId, defaultId, &  ! #3
+       2_i8, 3_i8, defaultId, defaultId, &
+       defaultId, defaultId, defaultId, defaultId, &
+       defaultId, defaultId, defaultId, defaultId, &
+       defaultId, defaultId, defaultId, defaultId, &
+       defaultId, defaultId, defaultId, defaultId, &
+       2_i8, defaultId, defaultId, defaultId, &  ! #4
+       2_i8, defaultId, defaultId, defaultId, &
+       2_i8, defaultId, defaultId, defaultId, &
+       defaultId, defaultId, defaultId, defaultId, &
+       defaultId, defaultId, defaultId, defaultId, &
+       defaultId, defaultId, defaultId, defaultId, &
+       6_i8, defaultId, defaultId, defaultId, &  ! #5
+       5_i8, defaultId, defaultId, defaultId, &
+       4_i8, defaultId, defaultId, defaultId, &
+       3_i8, defaultId, defaultId, defaultId, &
+       2_i8, defaultId, defaultId, defaultId, &
+       1_i8, defaultId, defaultId, defaultId, &
+       6_i8, defaultId, defaultId, defaultId, &  ! #6
+       4_i8, 5_i8, 6_i8, defaultId, &
+       4_i8, defaultId, defaultId, defaultId, &
+       4_i8, defaultId, defaultId, defaultId, &
+       1_i8, 2_i8, 3_i8, defaultId, &
+       defaultId, defaultId, defaultId, defaultId, &
+       3_i8, defaultId, defaultId, defaultId, &   ! #7
+       4_i8, 5_i8, 6_i8, defaultId, &
+       6_i8, defaultId, defaultId, defaultId, &
+       defaultId, defaultId, defaultId, defaultId, &
+       defaultId, defaultId, defaultId, defaultId, &
+       defaultId, defaultId, defaultId, defaultId, &
+       6_i8, 5_i8, defaultId, defaultId, &  ! #8
+       4_i8, 3_i8, defaultId, defaultId, &
+       2_i8, 1_i8, defaultId, defaultId, &
+       defaultId, defaultId, defaultId, defaultId, &
+       defaultId, defaultId, defaultId, defaultId, &
+       defaultId, defaultId, defaultId, defaultId, &
+       5_i8, defaultId, defaultId, defaultId, &  ! #9
+       5_i8, 4_i8, 3_i8, 2_i8, &
+       2_i8, 1_i8, defaultId, defaultId, &
+       defaultId, defaultId, defaultId, defaultId, &
+       defaultId, defaultId, defaultId, defaultId, &
+       defaultId, defaultId, defaultId, defaultId &
+      ], shape(referenceIds), order=[1, 2, 3])
+
+    oneThird = 1.0_dp/3.0_dp
+    twoThirds = 2.0_dp/3.0_dp
+    oneSixth = 1.0_dp/6.0_dp
+
+    referenceWeights(:, :, :) = reshape([&
+       1.0_dp, defaultWeight, defaultWeight, defaultWeight, &  ! #1
+       1.0_dp, defaultWeight, defaultWeight, defaultWeight, &
+       1.0_dp, defaultWeight, defaultWeight, defaultWeight, &
+       1.0_dp, defaultWeight, defaultWeight, defaultWeight, &
+       1.0_dp, defaultWeight, defaultWeight, defaultWeight, &
+       1.0_dp, defaultWeight, defaultWeight, defaultWeight, &
+       0.5_dp, 0.5_dp, defaultWeight, defaultWeight, &  ! #2
+       0.5_dp, 0.5_dp, defaultWeight, defaultWeight, &
+       0.5_dp, 0.5_dp, defaultWeight, defaultWeight, &
+       defaultWeight, defaultWeight, defaultWeight, defaultWeight, &
+       defaultWeight, defaultWeight, defaultWeight, defaultWeight, &
+       defaultWeight, defaultWeight, defaultWeight, defaultWeight, &
+       0.5_dp, 0.5_dp, defaultWeight, defaultWeight, &  ! #3
+       0.5_dp, 0.5_dp, defaultWeight, defaultWeight, &
+       defaultWeight, defaultWeight, defaultWeight, defaultWeight, &
+       defaultWeight, defaultWeight, defaultWeight, defaultWeight, &
+       defaultWeight, defaultWeight, defaultWeight, defaultWeight, &
+       defaultWeight, defaultWeight, defaultWeight, defaultWeight, &
+       1.0_dp, defaultWeight, defaultWeight, defaultWeight, &  ! #4
+       1.0_dp, defaultWeight, defaultWeight, defaultWeight, &
+       1.0_dp, defaultWeight, defaultWeight, defaultWeight, &
+       defaultWeight, defaultWeight, defaultWeight, defaultWeight, &
+       defaultWeight, defaultWeight, defaultWeight, defaultWeight, &
+       defaultWeight, defaultWeight, defaultWeight, defaultWeight, &
+       1.0_dp, defaultWeight, defaultWeight, defaultWeight, &  ! #5
+       1.0_dp, defaultWeight, defaultWeight, defaultWeight, &
+       1.0_dp, defaultWeight, defaultWeight, defaultWeight, &
+       1.0_dp, defaultWeight, defaultWeight, defaultWeight, &
+       1.0_dp, defaultWeight, defaultWeight, defaultWeight, &
+       1.0_dp, defaultWeight, defaultWeight, defaultWeight, &
+       1.0_dp, defaultWeight, defaultWeight, defaultWeight, &  ! #6
+       oneSixth, twoThirds, oneSixth, defaultWeight, &
+       1.0_dp, defaultWeight, defaultWeight, defaultWeight, &
+       1.0_dp, defaultWeight, defaultWeight, defaultWeight, &
+       oneThird, oneThird, oneThird, defaultWeight, &
+       defaultWeight, defaultWeight, defaultWeight, defaultWeight, &
+       1.0_dp, defaultWeight, defaultWeight, defaultWeight, &  ! #7
+       0.4_dp, 0.4_dp, 0.2_dp, defaultWeight, &
+       1.0_dp, defaultWeight, defaultWeight, defaultWeight, &
+       defaultWeight, defaultWeight, defaultWeight, defaultWeight, &
+       defaultWeight, defaultWeight, defaultWeight, defaultWeight, &
+       defaultWeight, defaultWeight, defaultWeight, defaultWeight, &
+       0.5_dp, 0.5_dp, defaultWeight, defaultWeight, &  ! #8
+       0.5_dp, 0.5_dp, defaultWeight, defaultWeight, &
+       0.5_dp, 0.5_dp, defaultWeight, defaultWeight, &
+       defaultWeight, defaultWeight, defaultWeight, defaultWeight, &
+       defaultWeight, defaultWeight, defaultWeight, defaultWeight, &
+       defaultWeight, defaultWeight, defaultWeight, defaultWeight, &
+       1.0_dp, defaultWeight, defaultWeight, defaultWeight, &  ! #9
+       0.5_dp, 0.25_dp, 0.125_dp, 0.125_dp, &
+       0.625_dp, 0.375_dp, defaultWeight, defaultWeight, &
+       defaultWeight, defaultWeight, defaultWeight, defaultWeight, &
+       defaultWeight, defaultWeight, defaultWeight, defaultWeight, &
+       defaultWeight, defaultWeight, defaultWeight, defaultWeight &
+      ], shape(referenceWeights), order=[1, 2, 3])
+
+    do i=1, size(pairs, 2)
+       log_info(*) '*** Working on case ', i, ' ***'
+       ! link the CoordinatePointers
+       sourceCoords(1)%coord_p => MPR_COORDINATES(pairs(1, i))
+       targetCoords(1)%coord_p => MPR_COORDINATES(pairs(2, i))
+
+       ! init the Upscaler
+       call get_coordUpscaler(sourceCoords, targetCoords, upscalerId)
+       upscaler => MPR_COORD_UPSCALERS(upscalerId)
+
+       currentSubcells = targetCoords(1)%coord_p%count
+       currentMaxSubcells = maxval(referenceSubcells(1:currentSubcells, i))
+       log_debug(*) 'ref_subcells:', referenceSubcells(1:currentSubcells, i)
+       log_debug(*) 'act_subcells:', upscaler%get_subcells()
+       @assertEqual(referenceSubcells(1:currentSubcells, i), upscaler%get_subcells())
+       log_debug(*) 'ref_ids:', referenceIds(1:currentMaxSubcells, 1:currentSubcells, i)
+       log_debug(*) 'act_ids:', upscaler%get_ids()
+       @assertEqual(referenceIds(1:currentMaxSubcells, 1:currentSubcells, i), upscaler%get_ids())
+       log_debug(*) 'ref_weights:', referenceWeights(1:currentMaxSubcells, 1:currentSubcells, i)
+       log_debug(*) 'act_weights:', upscaler%get_weights()
+       @assertEqual(referenceWeights(1:currentMaxSubcells, 1:currentSubcells, i), upscaler%get_weights())
+
+    end do
+
+    ! clean up
+    call reset()
+
+  end subroutine test_compute_weights_1d
+
+  @test
+  subroutine test_compute_weights_2d()
+     integer(i4), dimension(8) :: ids
+     type(Coordinate) :: coord
+     type(CoordinatePointer), dimension(1) :: sourceCoords, targetCoords
+     real(dp) :: oneThird, twoThirds, oneNinth, twoNinth, fourNinth
+     type(CoordUpscaler), pointer :: upscaler
+     integer(i4) :: upscalerId
+     real(dp), dimension(4,6) :: referenceWeights
+     integer(i8), dimension(4,6) :: referenceIds
+
+     ! init all the coordinates
+     ids(1) = get_index_in_vector('x_in', MPR_COORDINATES)
+     coord = newCoordinate('x_in', ids(1), "start", values=[0.0_dp, 1.0_dp, 2.0_dp, 3.0_dp], bound=4.0_dp)
+     call add_coordinate(coord, ids(1))
+     ids(2) = get_index_in_vector('y_in', MPR_COORDINATES)
+     coord = newCoordinate('y_in', ids(2), "start", values=[0.0_dp, 1.0_dp, 2.0_dp], bound=3.0_dp)
+     call add_coordinate(coord, ids(2))
+     ids(3) = get_index_in_vector('x_out', MPR_COORDINATES)
+     coord = newCoordinate('x_out', ids(3), "start", values=[1.5_dp, 3.0_dp, 3.5_dp], bound=4.0_dp)
+     call add_coordinate(coord, ids(3))
+     ids(4) = get_index_in_vector('y_out', MPR_COORDINATES)
+     coord = newCoordinate('y_out', ids(4), "start", values=[0.0_dp, 1.5_dp], bound=3.0_dp)
+     call add_coordinate(coord, ids(4))
+
+     ids(5) = get_index_in_vector('xy_in', MPR_COORDINATES)
+     coord = newCoordinate('xy_in', ids(5), "start", &
+             subDims=['x_in', 'y_in'] &
+     )
+     call add_coordinate(coord, ids(5))
+     sourceCoords(1)%coord_p => MPR_COORDINATES(ids(5))
+
+     ids(6) = get_index_in_vector('xy_out', MPR_COORDINATES)
+     coord = newCoordinate('xy_out', ids(6), "start", &
+             subDims=['x_out', 'y_out'] &
+     )
+     call add_coordinate(coord, ids(6))
+     targetCoords(1)%coord_p => MPR_COORDINATES(ids(6))
+
+     ! init the Upscaler
+     call get_coordUpscaler(sourceCoords, targetCoords, upscalerId)
+     upscaler => MPR_COORD_UPSCALERS(upscalerId)
+     oneThird = 1.0_dp/3.0_dp
+     twoThirds = 2.0_dp/3.0_dp
+     oneNinth = 1.0_dp/9.0_dp
+     twoNinth = 2.0_dp/9.0_dp
+     fourNinth = 4.0_dp/9.0_dp
+
+     @assertEqual([4_i8, 2_i8, 2_i8, 4_i8, 2_i8, 2_i8], upscaler%get_subcells())
+     referenceIds(:,1) = [2_i8, 3_i8, 6_i8, 7_i8]
+     referenceIds(:,2) = [4_i8, 8_i8, 0_i8, 0_i8]
+     referenceIds(:,3) = [4_i8, 8_i8, 0_i8, 0_i8]
+     referenceIds(:,4) = [6_i8, 7_i8, 10_i8, 11_i8]
+     referenceIds(:,5) = [8_i8, 12_i8, 0_i8, 0_i8]
+     referenceIds(:,6) = [8_i8, 12_i8, 0_i8, 0_i8]
+     @assertEqual(referenceIds, upscaler%get_ids())
+
+     referenceWeights(:,1) = [twoNinth, fourNinth, oneNinth, twoNinth]
+     referenceWeights(:,2) = [twoThirds, oneThird, 0.0_dp, 0.0_dp]
+     referenceWeights(:,3) = [twoThirds, oneThird, 0.0_dp, 0.0_dp]
+     referenceWeights(:,4) = [oneNinth, twoNinth, twoNinth, fourNinth]
+     referenceWeights(:,5) = [oneThird, twoThirds, 0.0_dp, 0.0_dp]
+     referenceWeights(:,6) = [oneThird, twoThirds, 0.0_dp, 0.0_dp]
+     @assertEqual(referenceWeights, upscaler%get_weights())
+
+     ids(7) = get_index_in_vector('y_ir', MPR_COORDINATES)
+     coord = newCoordinate('y_ir', ids(7), "start", values=[3.0_dp, 2.0_dp, 1.0_dp], bound=0.0_dp)
+     call add_coordinate(coord, ids(7))
+
+     ids(8) = get_index_in_vector('xy_in_reverse', MPR_COORDINATES)
+     coord = newCoordinate('xy_in_reverse', ids(8), "start", &
+             subDims=['x_in', 'y_ir'] &
+     )
+     call add_coordinate(coord, ids(8))
+     sourceCoords(1)%coord_p => MPR_COORDINATES(ids(8))
+
+     ! init the Upscaler
+     call get_coordUpscaler(sourceCoords, targetCoords, upscalerId)
+     upscaler => MPR_COORD_UPSCALERS(upscalerId)
+
+     @assertEqual([4_i8, 2_i8, 2_i8, 4_i8, 2_i8, 2_i8], upscaler%get_subcells())
+     referenceIds(:,1) = [10_i8, 11_i8, 6_i8, 7_i8]
+     referenceIds(:,2) = [12_i8, 8_i8, 0_i8, 0_i8]
+     referenceIds(:,3) = [12_i8, 8_i8, 0_i8, 0_i8]
+     referenceIds(:,4) = [6_i8, 7_i8, 2_i8, 3_i8]
+     referenceIds(:,5) = [8_i8, 4_i8, 0_i8, 0_i8]
+     referenceIds(:,6) = [8_i8, 4_i8, 0_i8, 0_i8]
+     @assertEqual(referenceIds, upscaler%get_ids())
+
+     referenceWeights(:,1) = [twoNinth, fourNinth, oneNinth, twoNinth]
+     referenceWeights(:,2) = [twoThirds, oneThird, 0.0_dp, 0.0_dp]
+     referenceWeights(:,3) = [twoThirds, oneThird, 0.0_dp, 0.0_dp]
+     referenceWeights(:,4) = [oneNinth, twoNinth, twoNinth, fourNinth]
+     referenceWeights(:,5) = [oneThird, twoThirds, 0.0_dp, 0.0_dp]
+     referenceWeights(:,6) = [oneThird, twoThirds, 0.0_dp, 0.0_dp]
+     @assertEqual(referenceWeights, upscaler%get_weights())
+
+     ! clean up
+     call reset()
+
+  end subroutine test_compute_weights_2d
+
+  @test
+  subroutine test_compute_weights_poly()
+     integer(i4), dimension(6) :: ids
+     type(Coordinate) :: coord
+     type(CoordinatePointer), dimension(1) :: sourceCoords, targetCoords
+     ! real(dp) :: oneThird, twoThirds, oneNinth, twoNinth, fourNinth
+     type(CoordUpscaler), pointer :: upscaler
+     integer(i4) :: upscalerId
+     ! real(dp), dimension(7,5) :: referenceWeights
+     real(dp), dimension(2,5) :: referenceWeights
+     ! integer(i8), dimension(7,5) :: referenceIds
+     integer(i8), dimension(2,5) :: referenceIds
+     real(dp), dimension(8,5) :: cornersCoord1, cornersCoord2
+
+     ! init the aliases
+     ! allocate the needed groups ...
+     if (allocated(MPR_COORD_ALIAS)) deallocate(MPR_COORD_ALIAS)
+     allocate(MPR_COORD_ALIAS(2_i4))
+     MPR_COORD_ALIAS(1) = CoordAlias(['x_in  ', 'x_out ', 'xy_in ', 'xy_out'])
+     MPR_COORD_ALIAS(2) = CoordAlias(['y_in  ', 'y_out ', 'xy_in ', 'xy_out'])
+
+     ! init all the coordinates
+     ids(1) = get_index_in_vector('x_in', MPR_COORDINATES)
+     coord = newCoordinate('x_in', ids(1), "start", values=[0.0_dp, 1.0_dp, 2.0_dp, 3.0_dp], bound=4.0_dp)
+     call add_coordinate(coord, ids(1))
+     ids(2) = get_index_in_vector('y_in', MPR_COORDINATES)
+     coord = newCoordinate('y_in', ids(2), "start", values=[0.0_dp, 1.0_dp, 2.0_dp], bound=3.0_dp)
+     call add_coordinate(coord, ids(2))
+     ids(3) = get_index_in_vector('x_out', MPR_COORDINATES)
+     coord = newCoordinate('x_out', ids(3), "start", values=[1.5_dp, 3.0_dp, 3.5_dp], bound=4.0_dp)
+     call add_coordinate(coord, ids(3))
+     ids(4) = get_index_in_vector('y_out', MPR_COORDINATES)
+     coord = newCoordinate('y_out', ids(4), "start", values=[0.0_dp, 1.5_dp], bound=3.0_dp)
+     call add_coordinate(coord, ids(4))
+
+     ids(5) = get_index_in_vector('xy_in', MPR_COORDINATES)
+     coord = newCoordinate('xy_in', ids(5), "start", &
+             subDims=['x_in', 'y_in'] &
+     )
+     call add_coordinate(coord, ids(5))
+     sourceCoords(1)%coord_p => MPR_COORDINATES(ids(5))
+
+     ids(6) = get_index_in_vector('xy_out', MPR_COORDINATES)
+     cornersCoord1(:,1) = [0.0_dp, 2.0_dp, 0.0_dp, nodata_dp, nodata_dp, nodata_dp, nodata_dp, nodata_dp]
+     cornersCoord2(:,1) = [0.0_dp, 0.0_dp, 2.0_dp, nodata_dp, nodata_dp, nodata_dp, nodata_dp, nodata_dp]
+     cornersCoord1(:,2) = [2.0_dp, 4.0_dp, 4.0_dp, 2.5_dp, 2.5_dp, 2.0_dp, 2.0_dp, 1.0_dp]
+     cornersCoord2(:,2) = [0.0_dp, 0.0_dp, 2.5_dp, 2.5_dp, 0.5_dp, 0.5_dp, 1.0_dp, 1.0_dp]
+     cornersCoord1(:,3) = [2.0_dp, 2.5_dp, 2.5_dp, 4.0_dp, 4.0_dp, 2.0_dp, nodata_dp, nodata_dp]
+     cornersCoord2(:,3) = [0.5_dp, 0.5_dp, 2.5_dp, 2.5_dp, 3.0_dp, 3.0_dp, nodata_dp, nodata_dp]
+     cornersCoord1(:,4) = [1.0_dp, 2.0_dp, 2.0_dp, 1.0_dp, nodata_dp, nodata_dp, nodata_dp, nodata_dp]
+     cornersCoord2(:,4) = [1.0_dp, 1.0_dp, 2.0_dp, 2.0_dp, nodata_dp, nodata_dp, nodata_dp, nodata_dp]
+     cornersCoord1(:,5) = [1.0_dp, 1.0_dp, 0.0_dp, nodata_dp, nodata_dp, nodata_dp, nodata_dp, nodata_dp]
+     cornersCoord2(:,5) = [1.0_dp, 3.0_dp, 2.0_dp, nodata_dp, nodata_dp, nodata_dp, nodata_dp, nodata_dp]
+     coord = newCoordinate('xy_out', ids(6), "start", &
+             centersCoord1=[sum(cornersCoord1(1:3,1))/3.0_dp, &
+                          sum(cornersCoord1(1:8,2))/8.0_dp, &
+                          sum(cornersCoord1(1:6,3))/6.0_dp, &
+                          sum(cornersCoord1(1:4,4))/4.0_dp, &
+                          sum(cornersCoord1(1:3,5))/3.0_dp &
+                          ], &
+             centersCoord2=[sum(cornersCoord2(1:3,1))/3.0_dp, &
+                          sum(cornersCoord2(1:8,2))/8.0_dp, &
+                          sum(cornersCoord2(1:6,3))/6.0_dp, &
+                          sum(cornersCoord2(1:4,4))/4.0_dp, &
+                          sum(cornersCoord2(1:3,5))/3.0_dp &
+                          ], &
+             cornersCoord1=cornersCoord1, &
+             cornersCoord2=cornersCoord2 &
+     )
+     call add_coordinate(coord, ids(6))
+     targetCoords(1)%coord_p => MPR_COORDINATES(ids(6))
+
+     ! init the Upscaler
+     call get_coordUpscaler(sourceCoords, targetCoords, upscalerId)
+     upscaler => MPR_COORD_UPSCALERS(upscalerId)
+     ! oneThird = 1.0_dp/3.0_dp
+     ! twoThirds = 2.0_dp/3.0_dp
+     ! oneNinth = 1.0_dp/9.0_dp
+     ! twoNinth = 2.0_dp/9.0_dp
+     ! fourNinth = 4.0_dp/9.0_dp
+
+     ! this is what is should be exactly, but algorithm only compares the centers
+     ! @assertEqual([3_i8, 7_i8, 4_i8, 1_i8, 2_i8], upscaler%get_subcells())
+     @assertEqual([1_i8, 2_i8, 0_i8, 1_i8, 0_i8], upscaler%get_subcells())
+
+     ! ...same here
+     ! referenceIds(:,1) = [1_i8, 2_i8, 5_i8, 0_i8, 0_i8, 0_i8, 0_i8]
+     ! referenceIds(:,2) = [2_i8, 3_i8, 4_i8, 7_i8, 8_i8, 11_i8, 12_i8]
+     ! referenceIds(:,3) = [3_i8, 7_i8, 11_i8, 12_i8, 0_i8, 0_i8, 0_i8]
+     ! referenceIds(:,4) = [6_i8, 0_i8, 0_i8, 0_i8, 0_i8, 0_i8, 0_i8]
+     ! referenceIds(:,5) = [5_i8, 9_i8, 0_i8, 0_i8, 0_i8, 0_i8, 0_i8]
+     referenceIds(:,1) = [1_i8, 0_i8]
+     referenceIds(:,2) = [4_i8, 8_i8]
+     referenceIds(:,3) = [0_i8, 0_i8]
+     referenceIds(:,4) = [6_i8, 0_i8]
+     referenceIds(:,5) = [0_i8, 0_i8]
+     @assertEqual(referenceIds, upscaler%get_ids())
+
+     ! ...and here
+     !referenceWeights(:,1) = [twoNinth, fourNinth, oneNinth, twoNinth]
+     !referenceWeights(:,2) = [twoThirds, oneThird, 0.0_dp, 0.0_dp]
+     !referenceWeights(:,3) = [twoThirds, oneThird, 0.0_dp, 0.0_dp]
+     !referenceWeights(:,4) = [oneNinth, twoNinth, twoNinth, fourNinth]
+     !referenceWeights(:,5) = [oneThird, twoThirds, 0.0_dp, 0.0_dp]
+     !referenceWeights(:,6) = [oneThird, twoThirds, 0.0_dp, 0.0_dp]
+     referenceWeights(:,1) = [1.0_dp, 0.0_dp]
+     referenceWeights(:,2) = [0.5_dp, 0.5_dp]
+     referenceWeights(:,3) = [0.0_dp, 0.0_dp]
+     referenceWeights(:,4) = [1.0_dp, 0.0_dp]
+     referenceWeights(:,5) = [0.0_dp, 0.0_dp]
+     @assertEqual(referenceWeights, upscaler%get_weights())
+
+     ! clean up
+     call reset()
+
+  end subroutine test_compute_weights_poly
+
+  @test
+  subroutine test_execute_coord_upscale()
+    integer(i4), dimension(4) :: ids
+    type(Coordinate) :: coord
+    type(CoordinatePointer), dimension(2) :: sourceCoords, targetCoords
+    real(dp), dimension(:), allocatable :: data
+    logical, dimension(:), allocatable :: reshapedMask
+    !real(dp), dimension(560000_i4), parameter :: refData = 1.0_dp
+    !logical, dimension(560000_i4), parameter :: refReshapedMask = .true.
+    real(dp), dimension(6_i4), parameter :: refData = 1.0_dp
+    logical, dimension(6_i4), parameter :: refReshapedMask = .true.
+    type(UpscaleHelper) :: upscaleHelper_
+    integer(i4) :: id
+    character(maxNameLength) :: upscalerName
+    character(maxNameLength), dimension(2), parameter :: upscaleOperatorNames = ['1.0', '1.0']
+
+    ! init all the coordinates
+    ids(1) = get_index_in_vector('x_in', MPR_COORDINATES)
+    !coord = newCoordinate('x_in', ids(1), "center", start=-179.999_dp, step=0.002_dp, count_=20000_i8)
+    coord = newCoordinate('x_in', ids(1), "center", start=0.5_dp, step=1.0_dp, count_=9_i8)
+    call add_coordinate(coord, ids(1))
+    ids(2) = get_index_in_vector('y_in', MPR_COORDINATES)
+    !coord = newCoordinate('y_in', ids(2), "center", start=83.999_dp, step=-0.002_dp, count_=70000_i8)
+    coord = newCoordinate('y_in', ids(2), "center", start=0.5_dp, step=1.0_dp, count_=4_i8)
+    call add_coordinate(coord, ids(2))
+    ids(3) = get_index_in_vector('x_out', MPR_COORDINATES)
+    !coord = newCoordinate('x_out', ids(3), "center", start=-179.95_dp, step=0.1_dp, count_=400_i8)
+    coord = newCoordinate('x_out', ids(3), "center", start=1.5_dp, step=3.0_dp, count_=3_i8)
+    call add_coordinate(coord, ids(3))
+    ids(4) = get_index_in_vector('y_out', MPR_COORDINATES)
+    !coord = newCoordinate('y_out', ids(4), "center", start=-55.95_dp, step=0.1_dp, count_=1400_i8)
+    coord = newCoordinate('y_out', ids(4), "center", start=1.0_dp, step=2.0_dp, count_=2_i8)
+    call add_coordinate(coord, ids(4))
+
+    if (allocated(MPR_COORD_ALIAS)) deallocate(MPR_COORD_ALIAS)
+    allocate(MPR_COORD_ALIAS(2_i4))
+    MPR_COORD_ALIAS(1) = CoordAlias(['x_in  ', 'x_out ', 'xy_in ', 'xy_out'])
+    MPR_COORD_ALIAS(2) = CoordAlias(['y_in  ', 'y_out ', 'xy_in ', 'xy_out'])
+
+    sourceCoords(1)%coord_p => MPR_COORDINATES(ids(1))
+    sourceCoords(2)%coord_p => MPR_COORDINATES(ids(2))
+
+    targetCoords(1)%coord_p => MPR_COORDINATES(ids(3))
+    targetCoords(2)%coord_p => MPR_COORDINATES(ids(4))
+
+    ! init the Upscaler
+    ! create the upscaleHelper name
+    upscalerName = create_upscaler_name(sourceCoords, targetCoords, upscaleOperatorNames)
+    ! create the upscaleHelper
+    id = get_index_in_vector(upscalerName, MPR_UPSCALERS)
+    upscaleHelper_ = UpscaleHelper(&
+          name = upscalerName, &
+          id = id, &
+          doUpscale = .true., &
+          targetCoords = targetCoords, &
+          sourceCoords = sourceCoords, &
+          upscaleOperatorNames = upscaleOperatorNames &
+          )
+    call add_upscaler(upscaleHelper_, id)
+    !allocate(data(1400000000_i8), reshapedMask(1400000000_i8))
+    allocate(data(36_i8), reshapedMask(36_i8))
+    data = 1.0_dp
+    reshapedMask = .true.
+    call upscaleHelper_%execute(data, reshapedMask)
+    @assertEqual(refData, data)
+    @assertEqual(refReshapedMask, reshapedMask)
+    ! clean up
+    call reset()
+
+  end subroutine test_execute_coord_upscale
+
+end module test_mo_mpr_data_array_upscale
+
+
+
